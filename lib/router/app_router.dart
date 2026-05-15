@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../models/goal.dart';
 import '../screens/goals/goals_screen.dart';
 import '../screens/goals/create_goal_screen.dart';
+import '../screens/goals/goal_detail_screen.dart';
 import '../screens/sessions/start_session_screen.dart';
 import '../screens/sessions/active_session_screen.dart';
 import '../screens/notifications/notifications_screen.dart';
@@ -30,7 +32,19 @@ final appRouter = GoRouter(
                 GoRoute(
                   path: 'create',
                   name: 'createGoal',
-                  builder: (context, state) => const CreateGoalScreen(),
+                  builder: (context, state) {
+                    final initialGoal =
+                        state.extra is Goal ? state.extra as Goal : null;
+                    return CreateGoalScreen(initialGoal: initialGoal);
+                  },
+                ),
+                GoRoute(
+                  path: ':goalId',
+                  name: 'goalDetail',
+                  builder: (context, state) {
+                    final goalId = state.pathParameters['goalId']!;
+                    return GoalDetailScreen(goalId: goalId);
+                  },
                 ),
               ],
             ),

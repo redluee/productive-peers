@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_sizes.dart';
+import '../../core/utils/frequency_utils.dart';
 import '../../models/goal.dart';
 import 'progress_bar.dart';
 
@@ -84,7 +85,7 @@ class GoalCard extends StatelessWidget {
                         ),
                         if (goal.frequency != null)
                           Text(
-                            goal.frequency!,
+                            FrequencyUtils.formatLabel(goal.frequency),
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                       ],

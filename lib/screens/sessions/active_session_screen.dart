@@ -22,7 +22,8 @@ class ActiveSessionScreen extends ConsumerStatefulWidget {
 class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
   late int _seconds;
   late bool _isRunning;
-  late Session? _currentSession;
+  Session? _currentSession;
+  bool _isSaving = false;
   late TextEditingController _notesController;
 
   @override
@@ -30,13 +31,11 @@ class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
     super.initState();
     _seconds = 0;
     _isRunning = false;
+    _currentSession = null;
     _notesController = TextEditingController();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadActiveSession();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadActiveSession();
+    });
   }
 
   Future<void> _loadActiveSession() async {
@@ -47,7 +46,22 @@ class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
       final session = await sessionRepository.getActiveSessionForGoal(
         widget.goalId,
       );
-      setState(() => _currentSession = session);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _currentSession = session;
+        if (session != null) {
+          _seconds = DateTime.now().difference(session.startTime).inSeconds;
+          _isRunning = session.status == 'Active';
+          if (session.notes != null && session.notes!.trim().isNotEmpty) {
+            _notesController.text = session.notes!;
+          }
+        }
+      });
+      if (_isRunning) {
+        _tickTimer();
+      }
     } catch (e) {
       // ignore
     }
@@ -59,24 +73,111 @@ class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
     super.dispose();
   }
 
-  void _startSession() {
-    setState(() => _isRunning = true);
+  Future<void> _startSession() async {
+    if (_isSaving) {
+      return;
+    }
+
+    if (_currentSession == null) {
+      final newSession = Session(
+        sessionId: const Uuid().v4(),
+        goalId: widget.goalId,
+        status: 'Active',
+      );
+
+      try {
+        await ref.read(createSessionProvider.notifier).createSession(newSession);
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _currentSession = newSession;
+          _seconds = 0;
+          _isRunning = true;
+        });
+      } catch (e) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting session: $e')),
+        );
+        return;
+      }
+    } else {
+      try {
+        await ref
+            .read(createSessionProvider.notifier)
+            .resumeSession(_currentSession!.sessionId);
+        if (!mounted) {
+          return;
+        }
+        setState(() => _isRunning = true);
+      } catch (e) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error resuming session: $e')),
+        );
+        return;
+      }
+    }
+
     _tickTimer();
   }
 
-  void _pauseSession() {
-    setState(() => _isRunning = false);
+  Future<void> _pauseSession() async {
+    if (_currentSession == null || _isSaving) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(createSessionProvider.notifier)
+          .pauseSession(_currentSession!.sessionId);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isRunning = false);
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error pausing session: $e')));
+    }
   }
 
-  void _resumeSession() {
-    setState(() => _isRunning = true);
-    _tickTimer();
+  Future<void> _resumeSession() async {
+    if (_currentSession == null || _isSaving) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(createSessionProvider.notifier)
+          .resumeSession(_currentSession!.sessionId);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isRunning = true);
+      _tickTimer();
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error resuming session: $e')));
+    }
   }
 
   void _tickTimer() {
     if (_isRunning) {
       Future.delayed(const Duration(seconds: 1), () {
-        if (mounted) {
+        if (mounted && _isRunning) {
           setState(() => _seconds++);
           _tickTimer();
         }
@@ -85,44 +186,113 @@ class _ActiveSessionScreenState extends ConsumerState<ActiveSessionScreen> {
   }
 
   Future<void> _endSession() async {
-    if (_currentSession == null) {
-      // Create new session if not exists
-      _currentSession = Session(
-        sessionId: const Uuid().v4(),
-        goalId: widget.goalId,
-        status: 'Completed',
-      );
-      _currentSession!.endTime = DateTime.now();
-      _currentSession!.durationMinutes = _seconds ~/ 60;
-      _currentSession!.notes = _notesController.text;
+    if (_isSaving || _currentSession == null) {
+      return;
+    }
 
-      try {
-        await ref
-            .read(createSessionProvider.notifier)
-            .createSession(_currentSession!);
-        // Complete it to update stats
-        await ref
-            .read(createSessionProvider.notifier)
-            .completeSession(_currentSession!.sessionId, widget.goalId);
+    setState(() {
+      _isRunning = false;
+      _isSaving = true;
+    });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Session completed! Duration: ${_seconds ~/ 60} minutes',
-              ),
-            ),
-          );
-          context.go('/');
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Error saving session: $e')));
+    try {
+      _currentSession!
+        ..notes = _notesController.text
+        ..durationMinutes = _seconds ~/ 60;
+      final repository = await ref.read(sessionRepositoryProvider.future);
+      await repository.updateSession(_currentSession!);
+
+      await ref
+          .read(createSessionProvider.notifier)
+          .completeSession(_currentSession!.sessionId, widget.goalId);
+
+      if (!mounted) {
+        return;
+      }
+
+      final goal = await ref.read(goalProvider(widget.goalId).future);
+      final canEditProgress =
+          goal != null && goal.type == 'Goal' && goal.endDate == null;
+
+      if (canEditProgress) {
+        final progress = await _showProgressUpdateDialog(goal.progress);
+        if (progress != null) {
+          final goalRepo = await ref.read(goalRepositoryProvider.future);
+          await goalRepo.updateGoalProgress(widget.goalId, progress);
+          ref.invalidate(goalsProvider);
+          ref.invalidate(goalProvider(widget.goalId));
         }
       }
+
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Session completed! Duration: ${_seconds ~/ 60} minutes',
+          ),
+        ),
+      );
+      context.goNamed('goals');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving session: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
+  }
+
+  Future<double?> _showProgressUpdateDialog(double currentProgress) async {
+    if (!mounted) {
+      return null;
+    }
+
+    double selected = currentProgress;
+    return showDialog<double>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Update Goal Progress'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${selected.toStringAsFixed(0)}% complete'),
+                  Slider(
+                    value: selected,
+                    min: 0,
+                    max: 100,
+                    divisions: 20,
+                    label: '${selected.toStringAsFixed(0)}%',
+                    onChanged: (value) {
+                      setDialogState(() => selected = value);
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Skip'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(selected),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override

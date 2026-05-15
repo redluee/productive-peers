@@ -149,6 +149,7 @@ class CreateSessionNotifier extends StateNotifier<AsyncValue<void>> {
       ref.invalidate(sessionsProvider);
       ref.invalidate(sessionsByGoalProvider(session.goalId));
       ref.invalidate(activeSessionsProvider);
+      ref.invalidate(activeSessionForGoalProvider(session.goalId));
       state = const AsyncValue.data(null);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -171,6 +172,7 @@ class CreateSessionNotifier extends StateNotifier<AsyncValue<void>> {
       ref.invalidate(sessionsProvider);
       ref.invalidate(sessionsByGoalProvider(goalId));
       ref.invalidate(activeSessionsProvider);
+      ref.invalidate(activeSessionForGoalProvider(goalId));
       ref.invalidate(goalsProvider);
       state = const AsyncValue.data(null);
     } catch (e, st) {
@@ -183,8 +185,13 @@ class CreateSessionNotifier extends StateNotifier<AsyncValue<void>> {
     try {
       final repository = await ref.read(sessionRepositoryProvider.future);
       await repository.pauseSession(sessionId);
+      final session = await repository.getSessionById(sessionId);
       ref.invalidate(sessionsProvider);
       ref.invalidate(activeSessionsProvider);
+      if (session != null) {
+        ref.invalidate(sessionsByGoalProvider(session.goalId));
+        ref.invalidate(activeSessionForGoalProvider(session.goalId));
+      }
       state = const AsyncValue.data(null);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -196,8 +203,13 @@ class CreateSessionNotifier extends StateNotifier<AsyncValue<void>> {
     try {
       final repository = await ref.read(sessionRepositoryProvider.future);
       await repository.resumeSession(sessionId);
+      final session = await repository.getSessionById(sessionId);
       ref.invalidate(sessionsProvider);
       ref.invalidate(activeSessionsProvider);
+      if (session != null) {
+        ref.invalidate(sessionsByGoalProvider(session.goalId));
+        ref.invalidate(activeSessionForGoalProvider(session.goalId));
+      }
       state = const AsyncValue.data(null);
     } catch (e, st) {
       state = AsyncValue.error(e, st);

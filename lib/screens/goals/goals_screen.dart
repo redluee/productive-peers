@@ -3,8 +3,11 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_sizes.dart';
 import '../../core/constants/app_strings.dart';
-import '../../widgets/common/app_bar_custom.dart';
-import '../../widgets/goals/goal_card.dart';
+import 'package:productive_peers/widgets/goals/goal_type_selection_dialog.dart';
+import 'package:productive_peers/widgets/common/app_bar_custom.dart';
+import 'package:productive_peers/widgets/goals/goal_card.dart';
+
+import '../../models/goal.dart';
 import '../../providers/goal_provider.dart';
 
 class GoalsScreen extends ConsumerWidget {
@@ -49,7 +52,10 @@ class GoalsScreen extends ConsumerWidget {
                 child: GoalCard(
                   goal: goal,
                   onTap: () {
-                      // Navigate to goal detail for viewing
+                    context.pushNamed(
+                      'goalDetail',
+                      pathParameters: {'goalId': goal.goalId},
+                    );
                   },
                   onLongPress: () {
                     // Show edit/delete context menu
@@ -65,7 +71,7 @@ class GoalsScreen extends ConsumerWidget {
                               title: const Text('Edit Goal'),
                               onTap: () {
                                 Navigator.pop(context);
-                                // TODO: Navigate to edit goal screen (Phase 2)
+                                context.pushNamed('createGoal', extra: goal);
                               },
                             ),
                             ListTile(
@@ -130,10 +136,41 @@ class GoalsScreen extends ConsumerWidget {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.go('/goal/create'),
-        tooltip: AppStrings.createGoalButton,
-        child: const Icon(Icons.add),
+      floatingActionButton: Tooltip(
+        message: AppStrings.createGoalButton,
+        child: Container(
+          width: 64,
+          height: 64,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment(0.94, -0.34),
+              end: Alignment(-0.94, 0.34),
+              colors: [Color(0xFF00E3A4), Color(0xFF036E50)],
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () async {
+                final selectedType = await showDialog<String>(
+                  context: context,
+                  builder: (context) => const GoalTypeSelectionDialog(),
+                );
+                if (selectedType != null && context.mounted) {
+                  context.pushNamed('createGoal', extra: Goal(
+                    goalId: '', // Temporary
+                    title: '',
+                    type: selectedType,
+                  ));
+                }
+              },
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
+          ),
+        ),
       ),
     );
   }

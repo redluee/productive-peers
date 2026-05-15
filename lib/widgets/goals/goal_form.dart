@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 import '../../core/constants/app_sizes.dart';
 import '../../core/constants/app_strings.dart';
 import '../../models/goal.dart';
-import 'package:uuid/uuid.dart';
 
 class GoalForm extends StatefulWidget {
   final Goal? initialGoal;
@@ -15,77 +16,71 @@ class GoalForm extends StatefulWidget {
 }
 
 class _GoalFormState extends State<GoalForm> {
-  late TextEditingController titleController;
-  late TextEditingController descriptionController;
-  late TextEditingController frequencyController;
-  late String selectedType;
-  late DateTime? selectedEndDate;
-  late bool isPublic;
+  final _formKey = GlobalKey<FormState>();
+  late String _type;
+
+  // Controllers
+  late TextEditingController _titleController;
+  late TextEditingController _descriptionController;
+  late TextEditingController _targetPercentageController;
+
+  // Habit
+  String _frequencyUnit = 'week'; // day, week, month
+  int _frequencyValue = 2;
+  Set<String> _selectedWeekdays = {'Monday'};
+
+  // Study
+  DateTime? _startDate;
+  DateTime? _endDate;
 
   @override
   void initState() {
     super.initState();
-    titleController = TextEditingController(text: widget.initialGoal?.title);
-    descriptionController = TextEditingController(
-      text: widget.initialGoal?.description,
+    _type = widget.initialGoal!.type;
+
+    _titleController = TextEditingController(text: widget.initialGoal?.title);
+    _descriptionController = TextEditingController(text: widget.initialGoal?.description);
+    _targetPercentageController = TextEditingController(
+      text: widget.initialGoal?.targetPercentage.toStringAsFixed(0) ?? '100',
     );
-    frequencyController = TextEditingController(
-      text: widget.initialGoal?.frequency,
-    );
-    selectedType = widget.initialGoal?.type ?? 'Goal';
-    selectedEndDate = widget.initialGoal?.endDate;
-    isPublic = widget.initialGoal?.isPublic ?? false;
+
+    _startDate = widget.initialGoal?.startDate ?? DateTime.now();
+    _endDate = widget.initialGoal?.endDate;
   }
 
   @override
   void dispose() {
-    titleController.dispose();
-    descriptionController.dispose();
-    frequencyController.dispose();
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _targetPercentageController.dispose();
     super.dispose();
   }
 
-  void _selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate:
-          selectedEndDate ?? DateTime.now().add(const Duration(days: 30)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (picked != null) {
-      setState(() => selectedEndDate = picked);
-    }
-  }
-
-  void _saveGoal() {
-    if (titleController.text.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please enter a title')));
+  void _saveForm() {
+    if (!_formKey.currentState!.validate()) {
       return;
     }
+    _formKey.currentState!.save();
 
     final goal = Goal(
       goalId: widget.initialGoal?.goalId ?? const Uuid().v4(),
-      title: titleController.text,
-      description: descriptionController.text.isEmpty
-          ? null
-          : descriptionController.text,
-      type: selectedType,
-      frequency: frequencyController.text.isEmpty
-          ? null
-          : frequencyController.text,
-      endDate: selectedEndDate,
-      isPublic: isPublic,
-      progress: widget.initialGoal?.progress ?? 0.0,
+      title: _titleController.text,
+      description: _descriptionController.text,
+      type: _type,
+      // Habit specific
+      frequency: _type == 'Habit' ? '$_frequencyValue times/$_frequencyUnit' : null,
+      frequencyDays: _type == 'Habit' ? _selectedWeekdays.toList() : null,
+      // Goal specific
+      targetPercentage: _type == 'Goal'
+          ? double.tryParse(_targetPercentageController.text) ?? 100.0
+          : 100.0,
+      // Study specific
+      startDate: _type == 'Study' ? _startDate : null,
+      endDate: _endDate,
     );
 
-    if (widget.initialGoal != null) {
+    if (widget.initialGoal != null && widget.initialGoal!.title.isNotEmpty) {
       goal.id = widget.initialGoal!.id;
-      goal.sessionsCompleted = widget.initialGoal!.sessionsCompleted;
-      goal.totalMinutes = widget.initialGoal!.totalMinutes;
-      goal.createdAt = widget.initialGoal!.createdAt;
     }
 
     widget.onSave(goal);
@@ -93,102 +88,179 @@ class _GoalFormState extends State<GoalForm> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Padding(
+    return Form(
+      key: _formKey,
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSizes.lg),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Title field
-            TextField(
-              controller: titleController,
-              decoration: InputDecoration(
-                labelText: AppStrings.goalTitle,
-                hintText: 'Enter goal title',
-              ),
-            ),
-            const SizedBox(height: AppSizes.md),
-
-            // Description field
-            TextField(
-              controller: descriptionController,
-              decoration: InputDecoration(
-                labelText: AppStrings.goalDescription,
-                hintText: 'Enter description (optional)',
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: AppSizes.md),
-
-            // Type selector
-            DropdownButtonFormField<String>(
-              initialValue: selectedType,
-              decoration: InputDecoration(labelText: AppStrings.goalType),
-              items: const [
-                DropdownMenuItem(value: 'Habit', child: Text('Habit')),
-                DropdownMenuItem(value: 'Study', child: Text('Study')),
-                DropdownMenuItem(value: 'Goal', child: Text('Goal')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => selectedType = value);
-                }
-              },
-            ),
-            const SizedBox(height: AppSizes.md),
-
-            // Frequency field
-            TextField(
-              controller: frequencyController,
-              decoration: InputDecoration(
-                labelText: AppStrings.goalFrequency,
-                hintText: '2 times per week',
-              ),
-            ),
-            const SizedBox(height: AppSizes.md),
-
-            // End date field
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                AppStrings.goalEndDate,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              subtitle: Text(
-                selectedEndDate?.toString().split(' ')[0] ?? 'Not set',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: _selectDate,
-            ),
-            const SizedBox(height: AppSizes.md),
-
-            // Is public toggle
-            CheckboxListTile(
-              value: isPublic,
-              onChanged: (value) {
-                setState(() => isPublic = value ?? false);
-              },
-              title: Text(AppStrings.goalIsPublic),
-              contentPadding: EdgeInsets.zero,
-            ),
+            Text('Create New $_type', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: AppSizes.lg),
-
-            // Save button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _saveGoal,
-                child: Text(
-                  widget.initialGoal != null
-                      ? AppStrings.editGoal
-                      : AppStrings.saveGoal,
-                ),
-              ),
+            _buildTitleField(),
+            const SizedBox(height: AppSizes.md),
+            _buildDescriptionField(),
+            const SizedBox(height: AppSizes.lg),
+            if (_type == 'Habit') _buildHabitFields(),
+            if (_type == 'Goal') _buildGoalFields(),
+            if (_type == 'Study') _buildStudyFields(),
+            const SizedBox(height: AppSizes.lg),
+            ElevatedButton(
+              onPressed: _saveForm,
+              child: const Text('Save Goal'),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTitleField() {
+    return TextFormField(
+      controller: _titleController,
+      decoration: const InputDecoration(
+        labelText: AppStrings.goalTitle,
+        hintText: 'e.g., Learn Flutter',
+      ),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Please enter a title.';
+        }
+        return null;
+      },
+    );
+  }
+
+  Widget _buildDescriptionField() {
+    return TextFormField(
+      controller: _descriptionController,
+      decoration: const InputDecoration(
+        labelText: AppStrings.goalDescription,
+        hintText: 'Add more details (optional)',
+      ),
+      maxLines: 3,
+    );
+  }
+
+  Widget _buildHabitFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Frequency', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: AppSizes.md),
+        Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: TextFormField(
+                initialValue: _frequencyValue.toString(),
+                decoration: const InputDecoration(labelText: 'Times'),
+                keyboardType: TextInputType.number,
+                onSaved: (value) => _frequencyValue = int.tryParse(value ?? '2') ?? 2,
+              ),
+            ),
+            const SizedBox(width: AppSizes.md),
+            Expanded(
+              flex: 3,
+              child: DropdownButtonFormField<String>(
+                value: _frequencyUnit,
+                decoration: const InputDecoration(labelText: 'Per'),
+                items: const [
+                  DropdownMenuItem(value: 'day', child: Text('Day')),
+                  DropdownMenuItem(value: 'week', child: Text('Week')),
+                  DropdownMenuItem(value: 'month', child: Text('Month')),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _frequencyUnit = value);
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+        if (_frequencyUnit == 'week') ...[
+          const SizedBox(height: AppSizes.md),
+          Text('On these days', style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: AppSizes.sm),
+          Wrap(
+            spacing: AppSizes.sm,
+            children: DateFormat().dateSymbols.WEEKDAYS.map((day) {
+              return FilterChip(
+                label: Text(day.substring(0, 3)),
+                selected: _selectedWeekdays.contains(day),
+                onSelected: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _selectedWeekdays.add(day);
+                    } else {
+                      _selectedWeekdays.remove(day);
+                    }
+                  });
+                },
+              );
+            }).toList(),
+          ),
+        ],
+        const SizedBox(height: AppSizes.md),
+        _buildDateField('End Date (Optional)', _endDate, (date) => setState(() => _endDate = date)),
+      ],
+    );
+  }
+
+  Widget _buildGoalFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: _targetPercentageController,
+          decoration: const InputDecoration(
+            labelText: 'Target Percentage',
+            suffixText: '%',
+          ),
+          keyboardType: TextInputType.number,
+          validator: (value) {
+            final num? val = num.tryParse(value ?? '');
+            if (val == null || val <= 0 || val > 100) {
+              return 'Enter a value between 1 and 100.';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: AppSizes.md),
+        _buildDateField('End Date (Optional)', _endDate, (date) => setState(() => _endDate = date)),
+      ],
+    );
+  }
+
+  Widget _buildStudyFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildDateField('Start Date', _startDate, (date) => setState(() => _startDate = date)),
+        const SizedBox(height: AppSizes.md),
+        _buildDateField('End Date (Optional)', _endDate, (date) => setState(() => _endDate = date)),
+      ],
+    );
+  }
+
+  Widget _buildDateField(String label, DateTime? date, Function(DateTime) onSelect) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(label),
+      subtitle: Text(date != null ? DateFormat.yMMMd().format(date) : 'Not set'),
+      trailing: const Icon(Icons.calendar_today),
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: date ?? DateTime.now(),
+          firstDate: DateTime.now().subtract(const Duration(days: 365)),
+          lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+        );
+        if (picked != null) {
+          onSelect(picked);
+        }
+      },
     );
   }
 }

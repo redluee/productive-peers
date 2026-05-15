@@ -12,6 +12,7 @@ class StartSessionScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final goalsAsync = ref.watch(goalsProvider);
+    final activeSessionsAsync = ref.watch(activeSessionsProvider);
 
     return Scaffold(
       appBar: CustomAppBar(title: AppStrings.startSession),
@@ -38,22 +39,59 @@ class StartSessionScreen extends ConsumerWidget {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(AppSizes.md),
-            itemCount: goals.length,
-            itemBuilder: (context, index) {
-              final goal = goals[index];
-              return Card(
-                child: ListTile(
-                  title: Text(goal.title),
-                  subtitle: Text(goal.type),
-                  trailing: const Icon(Icons.arrow_forward),
-                  onTap: () {
-                    context.go('/session/active/${goal.goalId}');
-                  },
-                ),
+          return activeSessionsAsync.when(
+            data: (activeSessions) {
+              final activeGoalIds = activeSessions
+                  .map((s) => s.goalId)
+                  .toSet();
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(AppSizes.md),
+                itemCount: goals.length,
+                itemBuilder: (context, index) {
+                  final goal = goals[index];
+                  final hasActiveSession = activeGoalIds.contains(goal.goalId);
+
+                  return Card(
+                    child: ListTile(
+                      title: Text(goal.title),
+                      subtitle: Text(
+                        hasActiveSession
+                            ? '${goal.type} • Session running'
+                            : goal.type,
+                      ),
+                      trailing: hasActiveSession
+                          ? const Chip(
+                              label: Text('Active'),
+                              avatar: Icon(Icons.play_arrow, size: 16),
+                              visualDensity: VisualDensity.compact,
+                            )
+                          : const Icon(Icons.arrow_forward),
+                      onTap: () {
+                        final goalId = goal.goalId.trim();
+                        if (goalId.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Unable to start session for this goal',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        context.pushNamed(
+                          'activeSession',
+                          pathParameters: {'goalId': goalId},
+                        );
+                      },
+                    ),
+                  );
+                },
               );
             },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, _) => Center(child: Text('Error: $err')),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),

@@ -21,7 +21,7 @@ class AppStrings {
   static const String goalType = 'Type';
   static const String goalFrequency = 'Frequency';
   static const String goalEndDate = 'End Date';
-  static const String goalIsPublic = 'Make Public';
+  static const String goalIsPrivate = 'Make Private';
   static const String saveGoal = 'Save Goal';
   static const String editGoal = 'Edit Goal';
   static const String deleteGoal = 'Delete Goal';

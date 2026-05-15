@@ -1,4 +1,5 @@
 import 'package:isar/isar.dart';
+import 'package:productive_peers/models/milestone.dart';
 
 part 'goal.g.dart';
 
@@ -11,11 +12,25 @@ class Goal {
   String? description;
   late String type; // 'Habit', 'Study', 'Goal'
   String? frequency; // e.g., "2 times/week"
+  List<String>? frequencyDays; // For weekly/monthly habits
   DateTime? endDate;
   double progress = 0.0; // 0.0 to 100.0
-  bool isPublic = false;
+  double targetPercentage = 100.0;
+  bool isPublic = true;
   DateTime createdAt = DateTime.now();
   DateTime updatedAt = DateTime.now();
+
+  // For Habits: to track completions
+  List<DateTime> completions = [];
+
+  // For Goals and Studies: to track milestones
+  List<Milestone> milestones = [];
+
+  // For Habits: to track streaks
+  int streak = 0;
+
+  // For Study goals
+  DateTime? startDate;
 
   // Statistics
   int sessionsCompleted = 0;
@@ -27,9 +42,12 @@ class Goal {
     this.description,
     required this.type,
     this.frequency,
+    this.frequencyDays,
     this.endDate,
     this.progress = 0.0,
-    this.isPublic = false,
+    this.targetPercentage = 100.0,
+    this.isPublic = true,
+    this.startDate,
   }) {
     createdAt = DateTime.now();
     updatedAt = DateTime.now();
